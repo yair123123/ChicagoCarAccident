@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pymongo.errors import PyMongoError
 from returns.result import Success, Failure
 
@@ -33,44 +35,59 @@ def get_accident_by_area(id_area: id):
         return Failure(str(e))
 
 
-def get_accidents_by_week(id_area: id, date_start: str):
-    date_start = date_start[0]
+def get_accidents_by_week(id_area: id, date_start: list[int]):
+    breakpoint()
+    date_start = datetime(year=int(date_start[2]), month=int(date_start[1]), day=int(date_start[0]))
+
     try:
-        accidents_by_area = areas.find({"area_id": id_area})["accidents"]
-        monthly_accident = monthly.find({"start": date_start})["accidents"]
-        accidents_by_area_monthly = list(set(accidents_by_area) & set(monthly_accident))
-        results = accidents.find({'_id': {'$in': accidents_by_area_monthly}})
+        areas_by_id = areas.find_one({"area_id": id_area})
+        if areas_by_id is None:
+            return Success("not found")
+        accidents_by_area = areas_by_id["accidents"]
+        week_accident = weekly.find({"start": date_start})
+        if week_accident is None:
+            return Success("not found")
+        week_accident = week_accident["accidents"]
+        accidents_by_area_weekly = list(set(accidents_by_area) & set(week_accident))
+        results = accidents.find({'_id': {'$in': accidents_by_area_weekly}})
         return Success(results)
     except PyMongoError as e:
         return Failure(str(e))
 
 
 def get_accidents_by_day(id_area: id, date: str):
-    date = date[0]
     try:
-        accidents_by_area = areas.find({"area_id": id_area})["accidents"]
-        daily_accident = daily.find({"date": date})["accidents"]
+        date = '/'.join(date)
+        breakpoint()
+        accidents_by_area = areas.find_one({"area": id_area})
+        if accidents_by_area is None:
+            return Success("not found")
+        accidents_by_area = accidents_by_area["accidents"]
+        daily_accident = daily.find_one({"date": date})
+        if daily_accident is None:
+            return Success("not found")
+        daily_accident = daily_accident["accidents"]
         accidents_by_area_daily = list(set(accidents_by_area) & set(daily_accident))
         results = accidents.find({'_id': {'$in': accidents_by_area_daily}})
-        return Success(results)
+        return Success(list(results))
     except PyMongoError as e:
         return Failure(str(e))
 
 
 def get_accidents_by_month(id_area: int, date: tuple):
-    year = date[0]
-    month = date[1]
+    year = date[1]
+    month = date[0]
     breakpoint()
     try:
         area_doc = areas.find_one({"area": id_area})
         if area_doc is None:
-            return Failure(f"No accidents found for area {id_area}")
+            return Success(f"No accidents found for area {id_area}")
         accidents_by_area = area_doc["accidents"]
-        weekly_accident_doc = weekly.find_one({"year": year, "month": month})
-        if weekly_accident_doc is None or "accidents" not in weekly_accident_doc:
-            return Failure(f"No weekly accidents found for {month}/{year}")
-        weekly_accident = weekly_accident_doc["accidents"]
-        accidents_by_area_weekly = list(set(accidents_by_area) & set(weekly_accident))
+        weekly_accident_doc = monthly.find_one({"year": year, "month": month})
+        if weekly_accident_doc is None:
+            return Success(f"No weekly accidents found for {month}/{year}")
+        monthly_accident = weekly_accident_doc["accidents"]
+        accidents_by_area_weekly = list(set(accidents_by_area) & set(monthly_accident))
         results_cursor = accidents.find({'_id': {'$in': accidents_by_area_weekly}})
         results = list(results_cursor)
 
@@ -83,20 +100,27 @@ def get_accidents_by_month(id_area: int, date: tuple):
 def get_accidents_by_cause_and_area(area_id: int):
     try:
         accidents_by_area = list(areas.aggregate([
-            {"$match": {"area_id": area_id}},
+            {"$match": {"area": area_id}},
             {"$lookup": {
-                "from": "accidents",
+                "from": "accident",
                 "localField": "accidents",
                 "foreignField": "_id",
                 "as": "accidents"
             }},
             {"$unwind": "$accidents"},
+            {"$project": {
+                "accidents._id": 1,
+                "accidents.date": 1,
+                "accidents.PRIM_CONTRIBUTORY_CAUSE": 1,
+                "_id": 0
+            }},
             {"$group": {
                 "_id": "$accidents.PRIM_CONTRIBUTORY_CAUSE",
                 "total_accidents": {"$sum": 1},
                 "accidents": {"$push": "$accidents"}
             }}
         ]))
+
         return Success(accidents_by_area)
     except PyMongoError as e:
         return Failure(str(e))
@@ -104,20 +128,22 @@ def get_accidents_by_cause_and_area(area_id: int):
 
 def get_accidents_by_injured_and_area(area_id: int):
     try:
+        breakpoint()
         accidents_by_area = list(areas.aggregate([
-            {"$match": {"area_id": area_id}},
+            {"$match": {"area": area_id}},
             {"$lookup": {
-                "from": "accidents",
+                "from": "accident",
                 "localField": "accidents",
                 "foreignField": "_id",
                 "as": "accidents"
             }},
             {"$unwind": "$accidents"},
             {"$group": {
-                "_id": "$accidents.injured",
+                "_id": "$accidents.injuries.total",
                 "total_accidents": {"$sum": 1},
                 "accidents": {"$push": "$accidents"}
-            }}
+            }
+            }
         ]))
         return Success(accidents_by_area)
     except PyMongoError as e:

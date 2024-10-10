@@ -39,8 +39,9 @@ def accident_by_period():
     response = get_accidents_by_period(area_id, period, date)
     return (response
             .map(lambda u: (parse_json(u), 200))
-            .value_or((parse_json({}), 404))
+            .value_or((parse_json({"error": "Not found"}), 404))
             )
+
 
 
 @accident_blueprint.route("/cause/<int:id_area>", methods=["GET"])

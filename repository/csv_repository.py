@@ -61,7 +61,7 @@ def init_chicago_accidents():
 
             monthly_dict = {
                 'year': row['CRASH_DATE'].split("/")[2].split(" ")[0],
-                'month': row['CRASH_DATE'].split("/")[1],
+                'month': row['CRASH_DATE'].split("/")[0],
             }
 
             monthly_result = monthly.update_one(
